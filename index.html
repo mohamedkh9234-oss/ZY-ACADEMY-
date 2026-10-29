@@ -365,21 +365,27 @@ const _rw=window.retryWrong;window.retryWrong=id=>{window._runStamp=Date.now();_
 
 
 /* ---------- Ben Salama voice explanations ---------- */
-const BEN_AUDIO={1:'ben-salama-1',2:'ben-salama-2',3:'ben-salama-3',4:'ben-salama-4',5:'ben-salama-5-fixed'}; /* Each lecture supports both .ogg and .mp3; keep both audio files beside index.html for device compatibility. */
+const BEN_AUDIO={1:'ben-salama-1',2:'ben-salama-2',3:'ben-salama-3',4:'ben-salama-4',5:['ben-salama-5-fixed','ben-salama-5']}; /* Each lecture supports both .ogg and .mp3; keep both audio files beside index.html for device compatibility. */
 /* ---------- Ben Salama lecture audio: one persistent player (keeps playing while you browse) ---------- */
 const BP={a:new Audio(),cur:0,drag:false};BP.a.preload='none';let _lp=0;
 const fmtT=s=>{s=Math.max(0,Math.floor(s||0));return pad(Math.floor(s/60))+':'+pad(s%60)};
 function benPos(){try{return JSON.parse(localStorage.getItem('zyBenPos')||'{}')}catch(e){return{}}}
 function benSavePos(end){if(!BP.cur)return;try{const p=benPos();p[BP.cur]=end?0:Math.floor(BP.a.currentTime);localStorage.setItem('zyBenPos',JSON.stringify(p))}catch(e){}}
 function mediaMeta(id){try{if('mediaSession' in navigator){const c=D().find(x=>x.id===id),ms=navigator.mediaSession;ms.metadata=new MediaMetadata({title:(A()?c.ar:c.en),artist:'شرح بن سلامه',album:'ZY Academy'});ms.setActionHandler('play',()=>BP.a.play());ms.setActionHandler('pause',()=>BP.a.pause());ms.setActionHandler('seekbackward',()=>benSkip(-10));ms.setActionHandler('seekforward',()=>benSkip(10));ms.setActionHandler('seekto',e=>{BP.a.currentTime=e.seekTime})}}catch(e){}}
-window.benLoad=(id,auto)=>{const f=BEN_AUDIO[id];if(!f)return;const a=BP.a;BP.cur=id;const ds=window._benData&&window._benData[id];a.src=ds||(f+(a.canPlayType('audio/ogg; codecs=opus')?'.ogg':'.mp3'));a.playbackRate=window._benRate||1;const p=benPos()[id]||0;
+const BEN_FMT=[['ogg','audio/ogg; codecs=opus'],['mp3','audio/mpeg'],['m4a','audio/mp4'],['opus','audio/ogg; codecs=opus'],['aac','audio/aac'],['wav','audio/wav'],['webm','audio/webm']];
+const benNames=id=>[].concat(BEN_AUDIO[id]||[]);
+async function benProbe(id){const out=[];for(const n of benNames(id))for(const [e] of BEN_FMT){try{const r=await fetch(n+'.'+e,{method:'HEAD'});const ct=r.headers.get('content-type')||'';if(r.ok&&!/text\/html/.test(ct))out.push(n+'.'+e+' ('+(ct||'?')+', '+(Math.round((+r.headers.get('content-length')||0)/104857.6)/10)+'MB)')}catch(x){}}return out}
+function benNext(){const a=BP.a;if(!BP.cur)return;if(BP.qi<BP.q.length){a.src=BP.q[BP.qi++];a.load();if(BP.auto)a.play().catch(()=>{});return}
+const id=BP.cur,code=a.error?a.error.code:0;benProbe(id).then(found=>{const nm=benNames(id).join(' / ');BP.err={id,msg:found.length?t('لقيت الملف ('+found.join('، ')+') لكن المتصفح مش قادر يشغّله. غالبًا الملف تالف أو ترميزه غير مدعوم. حوّله لـ mp3 عادي (mono، 32kbps) وارفعه بنفس الاسم. رمز الخطأ: '+code,'Found the file ('+found.join(', ')+') but the browser cannot play it. It is likely corrupt or an unsupported codec. Convert it to a plain mp3 (mono, 32kbps) and upload it with the same name. Error code: '+code):t('مالقيتش أي ملف صوت باسم '+nm+' جنب index.html. اتأكد من الاسم (حروف صغيرة) ومن إن الرفع خلص.','No audio file named '+nm+' was found next to index.html. Check the name (lowercase) and that the upload finished.')};benClose()})}
+window.benLoad=(id,auto)=>{if(!BEN_AUDIO[id])return;const a=BP.a;BP.cur=id;BP.err=null;BP.auto=!!auto;const ds=window._benData&&window._benData[id];
+BP.q=ds?[ds]:benNames(id).flatMap(n=>BEN_FMT.filter(([e,m],i,arr)=>a.canPlayType(m)&&arr.findIndex(x=>x[0]===e)===i).map(([e])=>n+'.'+e));BP.qi=0;
+a.playbackRate=window._benRate||1;const p=benPos()[id]||0;
 a.onloadedmetadata=()=>{if(p>5&&isFinite(a.duration)&&p<a.duration-15)a.currentTime=p;benUI()};
-a.onerror=()=>{if(/\.ogg$/.test(a.src)){a.src=f+'.mp3';a.load();a.play().catch(()=>{})}else{toast(t('ملف الصوت لسه ما اترفعش على الموقع.','The audio file has not been uploaded to the site yet.'));benClose()}};
-a.load();mediaMeta(id);if(auto)a.play().catch(()=>{});benUI()};
+a.onerror=benNext;benNext();mediaMeta(id);benUI()};
 window.benToggle=id=>{if(BP.cur!==id)benLoad(id,true);else if(BP.a.paused)BP.a.play().catch(()=>{});else BP.a.pause()};
 window.benSkip=d=>{const a=BP.a;if(!BP.cur)return;const m=isFinite(a.duration)?a.duration:1e9;a.currentTime=Math.max(0,Math.min(m,a.currentTime+d));benTick()};
 window.benSeekTo=v=>{const a=BP.a;if(isFinite(a.duration))a.currentTime=v/1000*a.duration};
-window.benClose=()=>{BP.a.pause();benSavePos();BP.cur=0;BP.a.removeAttribute('src');BP.a.load();benUI();if(S.tab==='ben')render(true)};
+window.benClose=()=>{BP.a.onerror=null;BP.a.pause();benSavePos();BP.cur=0;BP.a.removeAttribute('src');BP.a.load();benUI();if(S.tab==='ben')render(true)};
 window.benRate=r=>{window._benRate=r;BP.a.playbackRate=r;benUI();if(S.tab==='ben')render(true)};
 window.benCycle=()=>{const L=[1,1.25,1.5,2],i=L.indexOf(window._benRate||1);benRate(L[(i+1)%4])};
 function benTick(){const a=BP.a,d=isFinite(a.duration)?a.duration:0,e=document.getElementById('mpt');if(e)e.textContent=fmtT(a.currentTime)+' / '+fmtT(d);const r=document.getElementById('mpr');if(r&&!BP.drag&&d)r.value=Math.round(a.currentTime/d*1000)}
@@ -392,7 +398,7 @@ BP.a.ontimeupdate=()=>{benTick();if(Date.now()-_lp>3000){_lp=Date.now();benSaveP
 BP.a.onplay=BP.a.onpause=()=>{benUI();if(S.tab==='ben')render(true)};
 BP.a.onended=()=>{benSavePos(true);benUI();if(S.tab==='ben')render(true)};
 function benHtml(){const L=D(),ar=A();return `<div class="card"><h1>🎧 ${t('شرح بن سلامه','Ben Salama explanation')}</h1><p class="su">${t('شرح صوتي لكل محاضرة. اسمع وإنت بتقرأ الدروس أو الكتاب، والصوت يفضل شغال لما تنتقل بين الخانات.','A spoken explanation for each lecture. Keep listening while you read the lessons or the book; it continues as you switch tabs.')}</p><div class="seg rate" style="margin:8px 0 0">${[1,1.25,1.5,2].map(r=>`<button data-r="${r}" class="${(window._benRate||1)===r?'on':''}" onclick="benRate(${r})">${r}×</button>`).join('')}</div></div>`+
-L.map(c=>{const f=BEN_AUDIO[c.id],on=BP.cur===c.id,pl=on&&!BP.a.paused;return `<div class="card"><div class="su">${t('المحاضرة','LECTURE')} ${pad(c.id)}</div><h3>${esc(ar?c.ar:c.en)}</h3>`+(f?`<button class="cta" onclick="benToggle(${c.id})">${pl?'⏸ '+t('إيقاف مؤقت','Pause'):'▶ '+(on?t('كمّل','Resume'):t('شغّل المحاضرة','Play lecture'))}</button>${on?`<div class="row2"><button class="cta alt" onclick="benSkip(-10)">↺ ${t('رجوع 10 ث','Back 10s')}</button><button class="cta alt" onclick="benSkip(10)">${t('تقديم 10 ث','Forward 10s')} ↻</button></div>`:''}`:`<p style="margin-top:8px"><span class="chip" style="display:inline-flex;align-items:center">⏳ Coming soon</span></p>`)+'</div>'}).join('')}
+L.map(c=>{const f=BEN_AUDIO[c.id],on=BP.cur===c.id,pl=on&&!BP.a.paused;return `<div class="card"><div class="su">${t('المحاضرة','LECTURE')} ${pad(c.id)}</div><h3>${esc(ar?c.ar:c.en)}</h3>`+(f?`<button class="cta" onclick="benToggle(${c.id})">${pl?'⏸ '+t('إيقاف مؤقت','Pause'):'▶ '+(on?t('كمّل','Resume'):t('شغّل المحاضرة','Play lecture'))}</button>${BP.err&&BP.err.id===c.id?'<p style="color:var(--bad);margin-top:8px">'+esc(BP.err.msg)+'</p>':''}${on?`<div class="row2"><button class="cta alt" onclick="benSkip(-10)">↺ ${t('رجوع 10 ث','Back 10s')}</button><button class="cta alt" onclick="benSkip(10)">${t('تقديم 10 ث','Forward 10s')} ↻</button></div>`:''}`:`<p style="margin-top:8px"><span class="chip" style="display:inline-flex;align-items:center">⏳ Coming soon</span></p>`)+'</div>'}).join('')}
 const _r0=window.render;window.render=k=>{_r0(k);benUI()};
 
 window.navT=()=>{window._navOpen=!window._navOpen;render(true)};
