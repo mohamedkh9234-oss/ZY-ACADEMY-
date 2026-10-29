@@ -59,6 +59,11 @@ nav.open{display:block}nav button{min-width:0;font-size:12px}.navarrow{width:100
 .prow{padding:10px 0;border-top:1px solid var(--ln)}.prow:first-of-type{border:0}
 .ringbar{position:fixed;top:0;left:0;right:0;z-index:50;background:var(--gd);color:#1b1740;padding:16px;text-align:center;font-size:18px}
 .ringbar .cta{background:#1b1740;color:#fff}
+
+#mp{position:fixed;left:0;right:0;bottom:50px;max-width:760px;margin:auto;background:var(--sr);border-top:1px solid var(--ln);padding:6px 10px;z-index:6;display:none}
+#mp.on{display:block}#mp .r1{display:flex;align-items:center;gap:6px;margin-bottom:4px}#mp .mpt1{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mp button{min-height:44px;min-width:44px;border:1px solid var(--ln);background:var(--sf);border-radius:12px;font-weight:700;padding:0 8px}#mp input[type=range]{width:100%;direction:ltr}
+body.hasmp{padding-bottom:190px}
 </style>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-E7SZ95HMQQ"></script>
@@ -360,14 +365,38 @@ const _rw=window.retryWrong;window.retryWrong=id=>{window._runStamp=Date.now();_
 
 
 /* ---------- Ben Salama voice explanations ---------- */
-const BEN_AUDIO={1:'ben-salama-1',2:'ben-salama-2',3:'ben-salama-3',4:'ben-salama-4',5:'ben-salama-5'}; /* Each lecture supports both .ogg and .mp3; keep both audio files beside index.html for device compatibility. */
-window.benMissing=el=>{const m=document.getElementById('benmiss-'+el.dataset.l);if(m)m.style.display='block'};
-window.benRate=r=>{document.querySelectorAll('audio').forEach(a=>a.playbackRate=r);window._benRate=r;document.querySelectorAll('.rate button').forEach(b=>b.classList.toggle('on',+b.dataset.r===r))};
-window.benPlay=el=>{document.querySelectorAll('audio').forEach(a=>{if(a!==el)a.pause()});el.playbackRate=window._benRate||1;try{gtag('event','ben_salama_play',{lecture:+el.dataset.l})}catch(e){}};
-function benHtml(){const L=D(),ar=A();return `<div class="card"><h1>🎧 ${t('شرح بن سلامه','Ben Salama explanation')}</h1><p class="su">${t('شرح صوتي لكل محاضرة. اسمع وإنت بتذاكر.','A spoken explanation for each lecture. Listen while you study.')}</p><div class="seg rate" style="margin:8px 0 0">${[1,1.25,1.5,2].map(r=>`<button data-r="${r}" class="${(window._benRate||1)===r?'on':''}" onclick="benRate(${r})">${r}×</button>`).join('')}</div></div>`+
-L.map(c=>{const f=BEN_AUDIO[c.id];return `<div class="card"><div class="su">${t('المحاضرة','LECTURE')} ${pad(c.id)}</div><h3>${esc(ar?c.ar:c.en)}</h3>`+(f?`<audio controls preload="none" data-l="${c.id}" onplay="benPlay(this)" style="width:100%;margin-top:8px"><source src="${f}.ogg" type="audio/ogg; codecs=opus"><source src="${f}.mp3" type="audio/mpeg" data-l="${c.id}" onerror="benMissing(this)"></audio><p id="benmiss-${c.id}" class="su" style="display:none">${t('ملف الصوت لسه ما اترفعش على الموقع.','The audio file has not been uploaded to the site yet.')}</p>`:`<p style="margin-top:8px"><span class="chip" style="display:inline-flex;align-items:center">⏳ Coming soon</span></p>`)+'</div>'}).join('')}
+const BEN_AUDIO={1:'ben-salama-1',2:'ben-salama-2',3:'ben-salama-3',4:'ben-salama-4',5:'ben-salama-5-fixed'}; /* Each lecture supports both .ogg and .mp3; keep both audio files beside index.html for device compatibility. */
+/* ---------- Ben Salama lecture audio: one persistent player (keeps playing while you browse) ---------- */
+const BP={a:new Audio(),cur:0,drag:false};BP.a.preload='none';let _lp=0;
+const fmtT=s=>{s=Math.max(0,Math.floor(s||0));return pad(Math.floor(s/60))+':'+pad(s%60)};
+function benPos(){try{return JSON.parse(localStorage.getItem('zyBenPos')||'{}')}catch(e){return{}}}
+function benSavePos(end){if(!BP.cur)return;try{const p=benPos();p[BP.cur]=end?0:Math.floor(BP.a.currentTime);localStorage.setItem('zyBenPos',JSON.stringify(p))}catch(e){}}
+function mediaMeta(id){try{if('mediaSession' in navigator){const c=D().find(x=>x.id===id),ms=navigator.mediaSession;ms.metadata=new MediaMetadata({title:(A()?c.ar:c.en),artist:'شرح بن سلامه',album:'ZY Academy'});ms.setActionHandler('play',()=>BP.a.play());ms.setActionHandler('pause',()=>BP.a.pause());ms.setActionHandler('seekbackward',()=>benSkip(-10));ms.setActionHandler('seekforward',()=>benSkip(10));ms.setActionHandler('seekto',e=>{BP.a.currentTime=e.seekTime})}}catch(e){}}
+window.benLoad=(id,auto)=>{const f=BEN_AUDIO[id];if(!f)return;const a=BP.a;BP.cur=id;const ds=window._benData&&window._benData[id];a.src=ds||(f+(a.canPlayType('audio/ogg; codecs=opus')?'.ogg':'.mp3'));a.playbackRate=window._benRate||1;const p=benPos()[id]||0;
+a.onloadedmetadata=()=>{if(p>5&&isFinite(a.duration)&&p<a.duration-15)a.currentTime=p;benUI()};
+a.onerror=()=>{if(/\.ogg$/.test(a.src)){a.src=f+'.mp3';a.load();a.play().catch(()=>{})}else{toast(t('ملف الصوت لسه ما اترفعش على الموقع.','The audio file has not been uploaded to the site yet.'));benClose()}};
+a.load();mediaMeta(id);if(auto)a.play().catch(()=>{});benUI()};
+window.benToggle=id=>{if(BP.cur!==id)benLoad(id,true);else if(BP.a.paused)BP.a.play().catch(()=>{});else BP.a.pause()};
+window.benSkip=d=>{const a=BP.a;if(!BP.cur)return;const m=isFinite(a.duration)?a.duration:1e9;a.currentTime=Math.max(0,Math.min(m,a.currentTime+d));benTick()};
+window.benSeekTo=v=>{const a=BP.a;if(isFinite(a.duration))a.currentTime=v/1000*a.duration};
+window.benClose=()=>{BP.a.pause();benSavePos();BP.cur=0;BP.a.removeAttribute('src');BP.a.load();benUI();if(S.tab==='ben')render(true)};
+window.benRate=r=>{window._benRate=r;BP.a.playbackRate=r;benUI();if(S.tab==='ben')render(true)};
+window.benCycle=()=>{const L=[1,1.25,1.5,2],i=L.indexOf(window._benRate||1);benRate(L[(i+1)%4])};
+function benTick(){const a=BP.a,d=isFinite(a.duration)?a.duration:0,e=document.getElementById('mpt');if(e)e.textContent=fmtT(a.currentTime)+' / '+fmtT(d);const r=document.getElementById('mpr');if(r&&!BP.drag&&d)r.value=Math.round(a.currentTime/d*1000)}
+function benUI(){let m=document.getElementById('mp');if(!m){m=document.createElement('div');m.id='mp';document.body.append(m)}
+const on=!!BP.cur;m.className=on?'on':'';try{document.body.classList.toggle('hasmp',on)}catch(e){}if(!on){m.innerHTML='';return}
+const c=D().find(x=>x.id===BP.cur)||{ar:'',en:''},a=BP.a,pl=!a.paused&&!a.ended;
+m.innerHTML=`<div class="r1"><b class="mpt1">🎧 ${pad(BP.cur)} · ${esc(A()?c.ar:c.en)}</b><button onclick="benCycle()" aria-label="speed">${window._benRate||1}×</button><button onclick="benClose()" aria-label="close">✕</button></div><div class="r1"><button onclick="benSkip(-10)" aria-label="back 10 seconds">↺ 10</button><button onclick="benToggle(${BP.cur})" style="min-width:60px" aria-label="play pause">${pl?'⏸':'▶'}</button><button onclick="benSkip(10)" aria-label="forward 10 seconds">10 ↻</button><span id="mpt" class="su" style="direction:ltr;margin-inline-start:auto"></span></div><input id="mpr" type="range" min="0" max="1000" value="0" oninput="BP.drag=true;benSeekTo(this.value)" onchange="BP.drag=false">`;
+try{m.style.bottom=document.getElementById('nav').offsetHeight+'px'}catch(e){}benTick()}
+BP.a.ontimeupdate=()=>{benTick();if(Date.now()-_lp>3000){_lp=Date.now();benSavePos()}};
+BP.a.onplay=BP.a.onpause=()=>{benUI();if(S.tab==='ben')render(true)};
+BP.a.onended=()=>{benSavePos(true);benUI();if(S.tab==='ben')render(true)};
+function benHtml(){const L=D(),ar=A();return `<div class="card"><h1>🎧 ${t('شرح بن سلامه','Ben Salama explanation')}</h1><p class="su">${t('شرح صوتي لكل محاضرة. اسمع وإنت بتقرأ الدروس أو الكتاب، والصوت يفضل شغال لما تنتقل بين الخانات.','A spoken explanation for each lecture. Keep listening while you read the lessons or the book; it continues as you switch tabs.')}</p><div class="seg rate" style="margin:8px 0 0">${[1,1.25,1.5,2].map(r=>`<button data-r="${r}" class="${(window._benRate||1)===r?'on':''}" onclick="benRate(${r})">${r}×</button>`).join('')}</div></div>`+
+L.map(c=>{const f=BEN_AUDIO[c.id],on=BP.cur===c.id,pl=on&&!BP.a.paused;return `<div class="card"><div class="su">${t('المحاضرة','LECTURE')} ${pad(c.id)}</div><h3>${esc(ar?c.ar:c.en)}</h3>`+(f?`<button class="cta" onclick="benToggle(${c.id})">${pl?'⏸ '+t('إيقاف مؤقت','Pause'):'▶ '+(on?t('كمّل','Resume'):t('شغّل المحاضرة','Play lecture'))}</button>${on?`<div class="row2"><button class="cta alt" onclick="benSkip(-10)">↺ ${t('رجوع 10 ث','Back 10s')}</button><button class="cta alt" onclick="benSkip(10)">${t('تقديم 10 ث','Forward 10s')} ↻</button></div>`:''}`:`<p style="margin-top:8px"><span class="chip" style="display:inline-flex;align-items:center">⏳ Coming soon</span></p>`)+'</div>'}).join('')}
+const _r0=window.render;window.render=k=>{_r0(k);benUI()};
+
 window.navT=()=>{window._navOpen=!window._navOpen;render(true)};
-const _g3=window.go;window.go=(tab,ch)=>{window._navOpen=false;try{document.querySelectorAll('audio').forEach(a=>a.pause())}catch(e){}_g3(tab,ch)};
+const _g3=window.go;window.go=(tab,ch)=>{window._navOpen=false;_g3(tab,ch)};
 
 render();
 </script></body></html>
